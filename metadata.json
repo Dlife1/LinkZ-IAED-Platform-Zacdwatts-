@@ -1,5 +1,7 @@
 {
   "name": "LinkZ - Gresham Protocol",
   "description": "An AI-native music distribution engine built for high-fidelity attribution, instant royalties, and global strategic growth through the Gresham Protocol.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }

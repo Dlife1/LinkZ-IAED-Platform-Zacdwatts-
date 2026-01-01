@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Music, 
   Upload, 
@@ -19,20 +19,37 @@ import {
   LayoutDashboard,
   BrainCircuit,
   Settings,
-  // Fix: Adding missing icon imports used in the dashboard and generative engine views.
   Zap,
-  Cpu
+  Cpu,
+  Hash,
+  Fingerprint,
+  Mic,
+  MessageSquare,
+  X,
+  Send,
+  Search,
+  ExternalLink
 } from 'lucide-react';
 import { Metadata, ViewState } from './types';
 import StatCard from './components/StatCard';
 import GenerativeUIEngine from './components/GenerativeUIEngine';
-import { suggestMetadata, getRadarInsights } from './services/geminiService';
+import { 
+  suggestMetadata, 
+  getRadarInsights, 
+  transcribeAudio, 
+  performMarketSearch, 
+  createAssistantChat 
+} from './services/geminiService';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('landing');
   const [onboardStep, setOnboardStep] = useState(0);
   const [aiLoading, setAiLoading] = useState(false);
   const [radarInsights, setRadarInsights] = useState<any[]>([]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [marketSearchQuery, setMarketSearchQuery] = useState('');
+  const [marketSearchResult, setMarketSearchResult] = useState<{text: string, sources: any[]} | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
   
   const [metadata, setMetadata] = useState<Metadata>({
     title: '',
@@ -60,6 +77,17 @@ const App: React.FC = () => {
       }));
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const handleMarketSearch = async () => {
+    if (!marketSearchQuery.trim()) return;
+    setSearchLoading(true);
+    try {
+      const result = await performMarketSearch(marketSearchQuery);
+      setMarketSearchResult(result);
+    } finally {
+      setSearchLoading(false);
     }
   };
 
@@ -116,7 +144,7 @@ const App: React.FC = () => {
         )}
 
         {view === 'dashboard' && (
-          <div className="max-w-7xl mx-auto px-8 py-12 animate-in fade-in duration-700">
+          <div className="max-w-7xl mx-auto px-8 py-12 animate-in fade-in duration-700 pb-32">
             <header className="flex flex-col gap-4 mb-12 md:flex-row md:items-center md:justify-between">
               <div>
                 <h1 className="text-4xl font-extrabold tracking-tight mb-2">
@@ -131,7 +159,7 @@ const App: React.FC = () => {
                    <p className="text-xs text-slate-500 font-mono">IAED IGNITION CARD</p>
                    <p className="text-xl font-bold font-mono">$1,240.00</p>
                 </div>
-                <button onClick={() => setView('onboarding')} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-2xl font-bold transition-all hover:scale-105">
+                <button onClick={() => setOnboardStep(0) || setView('onboarding')} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-2xl font-bold transition-all hover:scale-105">
                   <Plus size={20} /> New Mission
                 </button>
               </div>
@@ -146,6 +174,52 @@ const App: React.FC = () => {
 
             <div className="grid gap-8 lg:grid-cols-3">
               <div className="lg:col-span-2 space-y-8">
+                {/* Market Intelligence Search (Grounded) */}
+                <div className="glass-card p-8 rounded-3xl border border-indigo-500/20 bg-indigo-500/5">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl font-bold flex items-center gap-2"><Globe size={20} className="text-indigo-400" /> Market Intelligence</h3>
+                      <p className="text-xs text-slate-400">Search global music trends using Gresham Protocol Grounding</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mb-6">
+                    <input 
+                      value={marketSearchQuery}
+                      onChange={(e) => setMarketSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleMarketSearch()}
+                      placeholder="e.g. Current independent artist sync trends in 2024"
+                      className="flex-1 p-4 bg-slate-900 border border-white/5 rounded-2xl text-sm outline-none focus:border-indigo-500 transition-all"
+                    />
+                    <button 
+                      onClick={handleMarketSearch}
+                      disabled={searchLoading}
+                      className="p-4 bg-indigo-600 hover:bg-indigo-500 rounded-2xl transition-all disabled:opacity-50"
+                    >
+                      {searchLoading ? <Cpu className="animate-spin" size={20} /> : <Search size={20} />}
+                    </button>
+                  </div>
+                  {marketSearchResult && (
+                    <div className="p-6 bg-slate-950/50 rounded-2xl border border-white/5 animate-in fade-in slide-in-from-top-2">
+                      <p className="text-sm text-slate-300 leading-relaxed mb-4 whitespace-pre-wrap">{marketSearchResult.text}</p>
+                      {marketSearchResult.sources.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {marketSearchResult.sources.map((src: any, i: number) => (
+                            <a 
+                              key={i} 
+                              href={src.web?.uri} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-white/5 border border-white/5 rounded-full text-[10px] text-indigo-300 hover:bg-white/10 transition-all"
+                            >
+                              <ExternalLink size={10} /> {src.web?.title || 'Source'}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="glass-card p-8 rounded-3xl border border-white/5">
                   <div className="flex items-center justify-between mb-8">
                     <h3 className="text-xl font-bold">Synergistic Opportunity Radar</h3>
@@ -300,281 +374,17 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Floating ChatBot */}
+      <ChatBot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} onOpen={() => setIsChatOpen(true)} />
     </div>
   );
 };
 
-/* --- Sub-Components --- */
+/* --- UI Sub-Components --- */
 
-const LandingView: React.FC<{ onStart: () => void }> = ({ onStart }) => (
-  <div className="relative min-h-screen flex flex-col items-center justify-center px-6 text-center overflow-hidden">
-    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-indigo-600/10 rounded-full blur-[160px] -z-10 animate-pulse" />
-    <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-cyan-600/10 rounded-full blur-[120px] -z-10" />
-    
-    <div className="inline-flex items-center gap-2 px-4 py-1.5 mb-8 text-xs font-bold border rounded-full bg-white/5 border-white/10 text-indigo-300 backdrop-blur-md tracking-widest uppercase">
-      <Sparkles size={14} className="animate-spin-slow" />
-      <span>AI-Native Equity Engine</span>
-    </div>
-    
-    <h1 className="max-w-4xl mb-8 text-6xl font-black tracking-tighter md:text-8xl leading-[0.9]">
-      Distribute your <br/>
-      <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">Sonic Identity</span>
-    </h1>
-    
-    <p className="max-w-2xl mb-12 text-lg md:text-xl text-slate-400 font-medium leading-relaxed">
-      Gresham Protocol is the world's first metadata-first distribution engine. 
-      Move from 90-day pay cycles to real-time spending with IAED.
-    </p>
-    
-    <div className="flex flex-col sm:flex-row gap-6">
-      <button 
-        onClick={onStart}
-        className="flex items-center gap-3 px-10 py-5 text-lg font-bold transition-all rounded-3xl bg-indigo-600 hover:bg-indigo-500 hover:scale-105 active:scale-95 shadow-[0_0_60px_rgba(79,70,229,0.4)]"
-      >
-        Ignite Deployment <ChevronRight size={24} />
-      </button>
-      <button className="px-10 py-5 text-lg font-bold border border-white/10 rounded-3xl hover:bg-white/5 transition-all">
-        Gresham Protocol Docs
-      </button>
-    </div>
-
-    <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 opacity-40 grayscale">
-      {['Apple Music', 'Spotify', 'Tidal', 'Amazon'].map(p => (
-        <span key={p} className="text-xl font-bold tracking-widest uppercase">{p}</span>
-      ))}
-    </div>
-  </div>
-);
-
-const OnboardingFlow: React.FC<{ 
-  currentStep: number; 
-  onNext: () => void; 
-  onBack: () => void;
-  onComplete: () => void; 
-  metadata: Metadata; 
-  setMetadata: (m: Metadata) => void;
-  onAiSuggest: () => void;
-  aiLoading: boolean;
-}> = ({ currentStep, onNext, onBack, onComplete, metadata, setMetadata, onAiSuggest, aiLoading }) => {
-  const steps = [
-    { title: 'Identity', icon: UserPlus },
-    { title: 'Sonic Asset', icon: Music },
-    { title: 'Fidelity', icon: Database },
-    { title: 'Deployment', icon: ShieldCheck }
-  ];
-
-  const handleAddContributor = () => {
-    setMetadata({
-      ...metadata,
-      contributors: [...metadata.contributors, { name: '', role: 'Writer', share: 0 }]
-    });
-  };
-
-  return (
-    <div className="max-w-3xl px-6 py-20 mx-auto">
-      <div className="flex items-center justify-between mb-16 px-4">
-        {steps.map((s, i) => (
-          <div key={i} className="flex flex-col items-center gap-3 relative z-10">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 ${i <= currentStep ? 'bg-indigo-600 shadow-lg shadow-indigo-600/30' : 'bg-slate-800'}`}>
-              <s.icon size={24} />
-            </div>
-            <span className={`text-[10px] uppercase font-bold tracking-widest ${i <= currentStep ? 'text-indigo-400' : 'text-slate-500'}`}>{s.title}</span>
-          </div>
-        ))}
-        {/* Progress Line */}
-        <div className="absolute top-[108px] left-[calc(50%-180px)] right-[calc(50%-180px)] h-[2px] bg-slate-800 -z-0" />
-      </div>
-
-      <div className="glass-card p-10 rounded-[40px] shadow-2xl animate-in zoom-in-95 duration-500">
-        {currentStep === 0 && (
-          <div className="space-y-8">
-            <div className="flex justify-between items-end">
-               <div>
-                  <h2 className="text-3xl font-black mb-2">Define Your Identity</h2>
-                  <p className="text-slate-400">The primary metadata entry point for global syndication.</p>
-               </div>
-               <button 
-                  onClick={onAiSuggest} 
-                  disabled={!metadata.artist || aiLoading}
-                  className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl hover:bg-indigo-500/20 transition-all disabled:opacity-30 flex items-center gap-2 text-xs font-bold"
-                >
-                  <Sparkles size={16} className={aiLoading ? 'animate-spin' : ''} /> AI Suggest
-                </button>
-            </div>
-            <div className="grid gap-6">
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-widest font-bold text-slate-500 ml-1">Artist Legal Name / Moniker</label>
-                <input 
-                  className="w-full p-5 text-xl transition-all border outline-none bg-slate-950/50 border-white/5 rounded-2xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  placeholder="e.g. Neon Horizon"
-                  value={metadata.artist}
-                  onChange={(e) => setMetadata({...metadata, artist: e.target.value})}
-                />
-              </div>
-              <div className="grid md:grid-cols-2 gap-6">
-                 <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-widest font-bold text-slate-500 ml-1">Genre</label>
-                    <select 
-                      className="w-full p-5 transition-all border outline-none bg-slate-950/50 border-white/5 rounded-2xl focus:border-indigo-500"
-                      value={metadata.genre}
-                      onChange={(e) => setMetadata({...metadata, genre: e.target.value})}
-                    >
-                      <option>Electronic</option>
-                      <option>Lo-fi</option>
-                      <option>Cinematic</option>
-                      <option>Phonk</option>
-                      <option>Techno</option>
-                    </select>
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-xs uppercase tracking-widest font-bold text-slate-500 ml-1">Release Title</label>
-                    <input 
-                      className="w-full p-5 transition-all border outline-none bg-slate-950/50 border-white/5 rounded-2xl focus:border-indigo-500"
-                      placeholder="e.g. Midnight Protocol"
-                      value={metadata.title}
-                      onChange={(e) => setMetadata({...metadata, title: e.target.value})}
-                    />
-                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 1 && (
-          <div className="space-y-8">
-            <h2 className="text-3xl font-black">Upload Master Asset</h2>
-            <div className="group flex flex-col items-center justify-center w-full p-16 border-2 border-dashed rounded-[32px] border-white/10 bg-white/5 hover:bg-white/10 transition-all cursor-pointer hover:border-indigo-500/50">
-              <div className="p-6 bg-indigo-600/10 rounded-full text-indigo-400 mb-6 group-hover:scale-110 transition-transform">
-                <Upload size={48} />
-              </div>
-              <p className="text-xl font-bold mb-2">Drop High-Fidelity Source</p>
-              <p className="text-sm text-slate-500">WAV (24-bit) or FLAC required for Gresham Certification</p>
-            </div>
-            
-            <div className="grid gap-4">
-              <div className={`p-5 border rounded-2xl transition-all cursor-pointer flex items-center justify-between ${metadata.spatialAudio ? 'border-indigo-500 bg-indigo-500/5' : 'border-white/5 bg-slate-950/30'}`} onClick={() => setMetadata({...metadata, spatialAudio: !metadata.spatialAudio})}>
-                 <div className="flex items-center gap-4">
-                   <div className={`p-2 rounded-lg ${metadata.spatialAudio ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-500'}`}>
-                      <Sparkles size={18} />
-                   </div>
-                   <div>
-                      <p className="font-bold text-sm">Spatial Audio (Dolby Atmos)</p>
-                      <p className="text-xs text-slate-500">Enhanced immersive metadata layer</p>
-                   </div>
-                 </div>
-                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${metadata.spatialAudio ? 'border-indigo-500 bg-indigo-500' : 'border-slate-700'}`}>
-                    {metadata.spatialAudio && <CheckCircle2 size={14} />}
-                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 2 && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <h2 className="text-3xl font-black gradient-text">Smart Attribution</h2>
-              <button onClick={handleAddContributor} className="p-3 bg-white/5 hover:bg-white/10 text-indigo-400 rounded-full transition-all">
-                <Plus size={24} />
-              </button>
-            </div>
-            <div className="space-y-4">
-              {metadata.contributors.map((c, i) => (
-                <div key={i} className="flex gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-                  <div className="flex-1 space-y-2">
-                    <input 
-                      className="w-full p-4 text-sm border outline-none bg-slate-950/50 border-white/5 rounded-xl focus:border-indigo-500"
-                      placeholder="Collaborator Name"
-                      value={c.name}
-                      onChange={(e) => {
-                        const newC = [...metadata.contributors];
-                        newC[i].name = e.target.value;
-                        setMetadata({...metadata, contributors: newC});
-                      }}
-                    />
-                  </div>
-                  <div className="w-40 space-y-2">
-                    <select 
-                      className="w-full p-4 text-sm border outline-none bg-slate-950/50 border-white/5 rounded-xl focus:border-indigo-500"
-                      value={c.role}
-                      onChange={(e) => {
-                        const newC = [...metadata.contributors];
-                        newC[i].role = e.target.value;
-                        setMetadata({...metadata, contributors: newC});
-                      }}
-                    >
-                      <option>Producer</option>
-                      <option>Writer</option>
-                      <option>Vocalist</option>
-                      <option>Engineer</option>
-                    </select>
-                  </div>
-                  <div className="w-24 space-y-2">
-                    <input 
-                      className="w-full p-4 text-sm border outline-none bg-slate-950/50 border-white/5 rounded-xl focus:border-indigo-500 text-center font-bold"
-                      placeholder="%"
-                      value={c.share}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="p-6 rounded-3xl bg-indigo-500/5 border border-indigo-500/10 text-sm text-indigo-300 leading-relaxed flex gap-4">
-              <Info size={24} className="shrink-0" />
-              <p>
-                LinkZ uses <strong>Dynamic Smart Contracts</strong>. This metadata ensures all equity is distributed instantly upon stream settlement via the AP2 FinTech Protocol.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 3 && (
-          <div className="space-y-8 text-center">
-            <div className="flex justify-center">
-               <div className="p-6 bg-emerald-500/20 rounded-full text-emerald-400 animate-pulse">
-                <ShieldCheck size={64} />
-               </div>
-            </div>
-            <h2 className="text-4xl font-black">Certification Complete</h2>
-            <div className="p-8 text-left border rounded-[32px] bg-white/5 border-white/10 space-y-4">
-               <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Protocol Summary</p>
-               <div className="grid grid-cols-2 gap-y-4">
-                  <div className="text-slate-400">Project Moniker</div>
-                  <div className="font-mono text-indigo-400 text-right font-bold">{metadata.artist || 'NULL'}</div>
-                  
-                  <div className="text-slate-400">Release Title</div>
-                  <div className="font-mono text-indigo-400 text-right font-bold">{metadata.title || 'NULL'}</div>
-                  
-                  <div className="text-slate-400">Fidelity Layer</div>
-                  <div className="font-mono text-indigo-400 text-right font-bold">Gresham Level 4</div>
-                  
-                  <div className="text-slate-400">Spatial Encoding</div>
-                  <div className="font-mono text-emerald-400 text-right font-bold">{metadata.spatialAudio ? 'ENABLED' : 'DISABLED'}</div>
-               </div>
-            </div>
-            <p className="text-sm text-slate-500 italic">"Deploying this release creates a permanent entry in the Global Credits Database (GCD)."</p>
-          </div>
-        )}
-
-        <div className="flex gap-6 mt-12">
-          {currentStep > 0 && (
-            <button 
-              onClick={onBack}
-              className="px-10 py-5 font-bold border rounded-3xl border-white/10 hover:bg-white/5 transition-all"
-            >
-              Previous
-            </button>
-          )}
-          <button 
-            onClick={currentStep === 3 ? onComplete : onNext}
-            className="flex-1 px-10 py-5 font-bold transition-all bg-indigo-600 rounded-3xl hover:bg-indigo-500 hover:scale-[1.02] shadow-xl shadow-indigo-600/20"
-          >
-            {currentStep === 3 ? 'Deploy to Cloud Run' : 'Proceed to Next Phase'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default App;
+const ChatBot: React.FC<{ isOpen: boolean; onClose: () => void; onOpen: () => void }> = ({ isOpen, onClose, onOpen }) => {
+  const [messages, setMessages] = useState<Array<{role: 'user' | 'bot', text: string}>>([
+    { role: 'bot', text: "Hello! I'm your LinkZ Assistant. How can I help you with the Gresham Protocol today?" }
+  ]);
+  const [input, setInput

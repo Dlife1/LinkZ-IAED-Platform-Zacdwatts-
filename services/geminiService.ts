@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Metadata } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -71,4 +71,53 @@ export const processGenerativeCommand = async (command: string) => {
     }
   });
   return response.text;
+};
+
+/**
+ * Transcribes audio data using Gemini 3 Flash.
+ * @param base64Audio The audio data in base64 format.
+ * @param mimeType The audio mime type (e.g., 'audio/wav').
+ */
+export const transcribeAudio = async (base64Audio: string, mimeType: string) => {
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: {
+      parts: [
+        { inlineData: { data: base64Audio, mimeType: mimeType } },
+        { text: "Transcribe this audio exactly as it is spoken. Only return the transcribed text." }
+      ]
+    }
+  });
+  return response.text;
+};
+
+/**
+ * Performs a search-grounded query for up-to-date industry information.
+ */
+export const performMarketSearch = async (query: string) => {
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Analyze the following industry query using the latest data: ${query}`,
+    config: {
+      tools: [{ googleSearch: {} }],
+    },
+  });
+  
+  const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+  return {
+    text: response.text,
+    sources: sources
+  };
+};
+
+/**
+ * Creates a chat session for the LinkZ Assistant using Gemini 3 Pro.
+ */
+export const createAssistantChat = () => {
+  return ai.chats.create({
+    model: 'gemini-3-pro-preview',
+    config: {
+      systemInstruction: "You are the LinkZ AI Assistant. You help artists manage their releases, understand metadata, and navigate the Gresham Protocol. You are professional, helpful, and technically savvy. Use the user's current project context if provided.",
+    },
+  });
 };
